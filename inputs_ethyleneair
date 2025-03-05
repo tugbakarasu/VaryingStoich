@@ -1,0 +1,179 @@
+amrex.fpe_trap_invalid=0
+
+max_step  = 10
+stop_time = 1.e-3
+
+geometry.is_periodic = 0 0 1
+geometry.coord_sys   = 0  # 0 => cart, 1 => RZ  2=>spherical
+geometry.prob_lo     =   0.0     0.0     0.0
+geometry.prob_hi     =   2.1     0.1     1.0
+amr.n_cell           =   5376   256      64
+# amr.n_cell           =   800   32      64
+
+# >>>>>>>>>>>>>  BC FLAGS <<<<<<<<<<<<<<<<
+# 0 = Interior           3 = Symmetry
+# 1 = Inflow             4 = SlipWall
+# 2 = Outflow            5 = NoSlipWall
+# >>>>>>>>>>>>>  BC FLAGS <<<<<<<<<<<<<<<<
+cns.lo_bc       =  4   4   0
+cns.hi_bc       =  2   4   0
+
+cns.cfl = 0.2  # cfl number for hyperbolic system
+
+cns.v = 1
+amr.v = 1
+amr.subcycling_mode = Auto
+cns.do_reflux = 1
+
+# FCT parameters
+cns.minro = -1.0e-8
+cns.minp  = 10132.5
+cns.diff1 = 0.999
+cns.diffcc = 0.999
+cns.vfc_threshold = 1.e-3
+eb2.small_volfrac 	= 1.e-3
+
+# SOOTFOIL START TIME
+cns.start_sfoil_time	 = 1.e-5
+
+# LOAD BALANCE
+amr.loadbalance_with_workestimates = 1
+amr.loadbalance_level0_int = 1000
+
+# REFINEMENT / REGRIDDING
+cns.tag_probspecific 		= 1 
+amr.max_level       		= 2     # maximum level number allowed
+cns.refine_max_dengrad_lev 	= 2
+amr.ref_ratio       		= 2 2 2 2 # refinement ratio
+amr.regrid_int      		= 2 2 2 2 # how often to regrid
+amr.blocking_factor 		= 256
+amr.max_grid_size   		= 10240
+#amr.max_grid_size_y	  	= 16
+#amr.max_grid_size_x	  	= 64
+amr.n_error_buf     		= 1 # number of buffer cells in error est
+amr.grid_eff        		= 0.99     # what constitutes an efficient grid
+
+# CHECKPOINT FILES
+amr.checkpoint_files_output = 1
+amr.check_file              = Outputs_ethair_quench/chk   # root name of checkpoint file
+amr.check_int               = 5000    # number of timesteps between checkpoints
+amr.restart				= Outputs_ethair_quench/chk00000005
+
+# PLOTFILES
+amr.plot_files_output 		= 1
+amr.file_name_digits  		= 8
+amr.plot_file         		= Outputs_ethair_quench/plt     # root name of plotfile
+amr.plot_int          		= 1000     # number of timesteps between plotfiles
+amr.derive_plot_vars  		= pressure x_velocity y_velocity schlieren
+
+# EB
+# eb2.geom_type 			= all_regular
+
+#-------------PROBLEM DEFINTION FOR DETONATION QUENCHING TESTS------------------------------
+eb2.geom_type 				= user_defined
+
+quench.box1_lo 				= 2.0 -1e-3 -1e-3
+quench.box1_hi 				= 2.8 25e-3 -1e-3
+
+quench.box2_lo 				= 2.0 29e-3 -1e-3
+quench.box2_hi 				= 2.8 45e-3 -1e-3
+
+quench.box3_lo 				= 2.0 47e-3 -1e-3
+quench.box3_hi 				= 2.8 60e-3 -1e-3
+
+quench.box4_lo 				= 2.0 61e-3 -1e-3
+quench.box4_hi 				= 2.8 70e-3 -1e-3
+
+quench.box5_lo 				= 2.0 70.5e-3 -1e-3
+quench.box5_hi 				= 2.8 78.5e-3 -1e-3
+
+quench.box6_lo 				= 2.0 78.75e-3 -1e-3
+quench.box6_hi 				= 2.8 101e-3 -1e-3
+
+# FULLY REFINE THE NARROWEST CHANNELS UPTO HIGHEST AMR LEVEL
+cns.refine_box_lo_0 = 2.0 70e-3 -1e-3
+cns.refine_box_hi_0 = 2.8 71e-3 -1e-3
+
+cns.refine_box_lo_1 = 2.0 78.5e-3 -1e-3
+cns.refine_box_hi_1 = 2.8 78.75e-3 -1e-3
+
+# REFINE ALONG THE CHANNEL HEIGHT NEAR THE CHANNEL ENTRANCE AND EXIT
+cns.refine_box_lo_2 = 2.0   -1e-3 -1e-3
+cns.refine_box_hi_2 = 2.001  0.101 -1e-3
+
+cns.refine_box_lo_3 = 2.8   -1e-3 -1e-3
+cns.refine_box_hi_3 = 2.801 0.101 -1e-3
+#-----------------------------------------------------------------------------------------
+
+cns.refine_cutcells 		= 0
+
+# eb_algorithm : 1 for FCT, 2 for PLM
+cns.eb_algorithm 			= 1 
+cns.plm_iorder   			= 2
+cns.eb_weights_type 		= 3
+
+cns.do_visc 				= false
+#cns.use_const_visc 		= false
+#cns.const_visc_mu  		= 0.001
+#cns.const_visc_ki  		= 0.0
+#cns.const_lambda   		= 0.0
+
+# problem specific parameter
+prob.p0  					= 92500.0
+prob.T0  					= 293.0
+prob.xd  					= 1.21e-3
+prob.deltaY 				= 0.5
+prob.deltaT 				= 2000
+prob.deltaP             	= 1.5
+prob.overdrive_factor 		= 1.0
+prob.time1 					= 0.0
+prob.time2 					= 0.0
+prob.t_inflow 				= 1.6e-6
+prob.Mobj  					= 0.0
+
+prob.xreflo   				= 0.03
+prob.xrefhi   				= 0.00
+prob.yreflo   				= 0.035
+prob.yrefhi   				= 0.065
+
+prob.Y1						= 1.0
+
+# REACTION PARAMETERS
+cns.do_react  				= true
+
+# Stoichiometric ethylene-air reaction parameters
+# equivalence ratio 							= 0.9971
+# experimental detonation cell size 			= 2.27 cm
+# laminar  flame thickness xft 					= 0.299 mm
+# half reaction distance xd 					= 1.2108 mm
+# heat release length Lhr 						= 0.156 mm
+# Detonation CJ speed 							= 1835.4 m/s
+# Domain dimensions, base level computational cells = 
+# Computational cell size of base level dx_L0	= 4.6875e-4 m (512 cells, 0.24 m height)
+# Computational cell size of finest level dx_L3	= 5.859375e-5 m (12800 cells, 6 m length, xd/20.66)
+# DEFINING THE REACTION PARAMETERS
+cns.eos_gamma 			= 1.173
+cns.eos_mu    			= 0.027916 		# UNITS: kg/mol
+cns.q_nd      			= 48.275		
+cns.Ea_nd     			= 62.147
+cns.pre_exp   			= 1.e13			# UNITS: cm^3 / (g-s)
+cns.Tref      			= 293.0
+cns.pref      			= 92500.0
+cns.kappa_0				= 7.3e-6		# UNITS: g / (s-cm-K^(0.7))
+
+prob.write_to_file      = 1
+prob.append_file        = 1
+prob.data_file 			= ethair_data.txt
+
+# DETAILS FOR WRITING FLAME AND SHOCK LOCATION IN PARTICULAR ZONES
+prob.write_to_file_zones      = 1
+prob.append_file_zones        = 1
+prob.data_file_zonebase 	  = ethair_data_zone
+
+# prob.nzones 				  = 5
+# prob.yloz					  = 24.9e-3 44.9e-3 59.9e-3 69.98e-3 78.48e-3
+# prob.yhiz					  = 29.1e-3 47.1e-3 61.1e-3 70.52e-3 78.78e-3
+
+prob.nzones 				  = 2
+prob.yloz					  = 20.e-3 60.e-3 
+prob.yhiz					  = 24.e-3 68.e-3
