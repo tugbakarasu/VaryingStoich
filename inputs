@@ -95,16 +95,16 @@ prob.yrefhi   				= 0.00
 prob.OF_st = 34.32
  
 # Rich eqv. parameters
-prob.Y_fuel_rich     = 0.0285
-prob.Y_oxidizer_rich = 0.9715
-prob.Y_product_rich  = 0.0
-prob.rho_rich = 0.9312
+prob.rich_Yf     	= 0.0285
+prob.rich_Yox 		= 0.9715
+prob.rich_Yp  		= 0.0
+prob.rich_rhot 		= 0.9312
 
 # Lean eqv. parameters
-prob.Y_fuel_lean     = 0.0214
-prob.Y_oxidizer_lean = 0.9786
-prob.Y_product_lean  = 0.0
-prob.rho_lean = 0.9312
+prob.lean_rhot     = 0.9312
+prob.lean_Yf = 0.0214
+prob.lean_Yox  = 0.9786
+prob.lean_Yp = 0.0
 
 prob.Y1						= 1.0
 
