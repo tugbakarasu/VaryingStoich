@@ -11,17 +11,19 @@
 using namespace amrex;
 
 // Calculate equivalence ratio from mass fractions
+// For this first compute unburnt mass fraction of fuel and oxidizer
 AMREX_GPU_DEVICE
 AMREX_FORCE_INLINE
 Real phiFromYoYfYp(const Real yO, const Real yF, const Real yP, const ProbParm* prob_parm) 
 {
-    Real yO0 = yO + (prob_parm->OFst / (1 + prob_parm->OFst)) * yP;
-    Real yF0 = yF + (1 / (1 + prob_parm->OFst)) * yP;
+    Real yO0 = yO + (prob_parm->OF_st / (1 + prob_parm->OF_st)) * yP;
+    Real yF0 = yF + (1 / (1 + prob_parm->OF_st)) * yP;
     
     return prob_parm->OF_st*yF0/yO0;
 }
 
 // Calculate local equivalence ratio
+// Get it using the local mass fractions of fuel and oxidizer
 AMREX_GPU_DEVICE
 AMREX_FORCE_INLINE
 Real phiLocalFromYoYfYp(const Real yO, const Real yF, const Real yP, const ProbParm* prob_parm)
@@ -35,27 +37,28 @@ AMREX_FORCE_INLINE
 void phi_yProg_to_Yi(const Real phi, const Real yProg, 
                      Real& yO, Real& yF, Real& yP, const ProbParm* prob_parm)
 {
-    const Real OFst = prob_parm->OF_st;
+    const Real OF_st = prob_parm->OF_st;
     
     if (phi < 1.0) {
-        yP = (1.0 - yProg)*phi*(OFst + 1.0)/(OFst + phi);
-        yF = yProg*phi/(OFst + phi);
-        yO = (yProg*phi + (1.0 - phi))*OFst/(OFst + phi);
+        yP = (1.0 - yProg)*phi*(OF_st + 1.0)/(OF_st + phi);
+        yF = yProg*phi/(OF_st + phi);
+        yO = (yProg*phi + (1.0 - phi))*OF_st/(OF_st + phi);
     } else {
-        yP = (OFst + 1.0)/(OFst + phi)*(1.0 - yProg);
-        yF = (yProg + (phi - 1.0))/(OFst + phi);
-        yO = yProg*OFst/(OFst + phi);
+        yP = (OF_st + 1.0)/(OF_st + phi)*(1.0 - yProg);
+        yF = (yProg + (phi - 1.0))/(OF_st + phi);
+        yO = yProg*OF_st/(OF_st + phi);
     }
 }
 
 // Function to calculate phi and reaction progress variable
+// For this compute the unburnt fuel and oxidizer mass fraction 
 AMREX_GPU_DEVICE
 AMREX_FORCE_INLINE
 void phiAndYReact(Real yO, Real yF, Real yP, Real& phi, Real& Y, const ProbParm* prob_parm)
 {
     // Calculate reconstructed initial mass fractions
-    Real yO0 = yO + nuOxDivNuP1*yP + 1.E-20;
-    Real yF0 = yF + nuFDivNuP1*yP + 1.E-20;
+    Real yO0 = yO + (prob_parm->OF_st / (1 + prob_parm->OF_st))*yP + 1.E-20;
+    Real yF0 = yF + (1 / (1 + prob_parm->OF_st))*yP + 1.E-20;
     
     // Calculate phi
     phi = prob_parm->OF_st*yF0/yO0;
@@ -246,29 +249,30 @@ CNS::compute_dSdt_box_fct (const Box& bx,
 		Real yP = sofab(i, j, k, URHOY_P) / sofab(i, j, k, URHO);
 		
 		// Calculate unburnt mixture equivalence ratio
-		Real phi_unburnt = phiFromYoYfYp(yO, yF, yP);
+		Real phi_unburnt = phiFromYoYfYp(yO, yF, yP, prob_parm);
 		
 		// Calculate local equivalence ratio (actual current ratio)
-		Real phi_local = phiLocalFromYoYfYp(yO, yF, yP);
+		Real phi_local = phiLocalFromYoYfYp(yO, yF, yP, prob_parm);
 		
 		// Calculate reconstructed initial mass fractions
-		Real yO0 = yO + nuOxDivNuP1*yP + 1.E-20;
-		Real yF0 = yF + nuFDivNuP1*yP + 1.E-20;
+		Real yO0 = yO + (prob_parm->OF_st / (1 + prob_parm->OF_st)) * yP;
+		Real yF0 = yF + (1 / (1 + prob_parm->OF_st)) * yP;
 		
 		// Calculate reaction progress variable
 		// This represents how much of the original reactants have been consumed
 		Real Y_react = (phi_unburnt < 1.0) ? yF/yF0 : yO/yO0;
 		
-		// Optional: Update CDM parameters based on unburnt mixture equivalence ratio
-		// lparm->Update_CDM_Parameters(phi_unburnt);
+		// Update CDM parameters based on unburnt mixture equivalence ratio
+		Real pre_exp_tmp, Ea_nd_tmp, q_nd_tmp, kappa_0_tmp;
+		Parm::Calculate_CDM_Parameters(phi_unburnt, pre_exp_tmp, Ea_nd_tmp, q_nd_tmp, kappa_0_tmp);
+
 		
 		// Calculate reaction rate using reaction progress variable
-		Real omegarho = -sofab(i, j, k, URHO) * lparm->pre_exp * Y_react
-		              * std::exp(-lparm->Ea_dim / (lparm->Ru * sofab(i, j, k, UTEMP)));
+		Real omegarho = -sofab(i, j, k, URHO) * pre_exp_tmp * Y_react * std::exp(-Ea_nd_tmp / (lparm->Ru * sofab(i, j, k, UTEMP)));
 
 		// Calculate species-specific reaction rates based on phi_unburnt (the original mixture)
 		Real omega_F, omega_Ox, omega_Pr;
-		Real s = OFst; // Stoichiometric O/F ratio
+		Real s = prob_parm->OF_st; // Stoichiometric O/F ratio
 
 		if (phi_unburnt < 1.0) {
 		    // F-lean condition
@@ -296,21 +300,21 @@ CNS::compute_dSdt_box_fct (const Box& bx,
 		    udi[2](i,j,k,UEDEN) = udi[2](i,j,k,UEDEN) - dt*omegarho*lparm->q_dim;
 		);
 
-		// Update F mass fraction in all dimensions
+		// Update Fuel mass fraction in all dimensions
 		AMREX_D_TERM(
 		    udi[0](i, j, k, URHOY_F) = amrex::max(0.0, udi[0](i, j, k, URHOY_F) + dt * omega_F);,
 		    udi[1](i, j, k, URHOY_F) = amrex::max(0.0, udi[1](i, j, k, URHOY_F) + dt * omega_F);,
 		    udi[2](i, j, k, URHOY_F) = amrex::max(0.0, udi[2](i, j, k, URHOY_F) + dt * omega_F);
 		);
 
-		// Update Oizer mass fraction in all dimensions
+		// Update Oxidizer mass fraction in all dimensions
 		AMREX_D_TERM(
 		    udi[0](i, j, k, URHOY_O) = amrex::max(0.0, udi[0](i, j, k, URHOY_O) + dt * omega_Ox);,
 		    udi[1](i, j, k, URHOY_O) = amrex::max(0.0, udi[1](i, j, k, URHOY_O) + dt * omega_Ox);,
 		    udi[2](i, j, k, URHOY_O) = amrex::max(0.0, udi[2](i, j, k, URHOY_O) + dt * omega_Ox);
 		);
 
-		// Update Puct mass fraction in all dimensions
+		// Update Product mass fraction in all dimensions
 		AMREX_D_TERM(
 		    udi[0](i, j, k, URHOY_P) = amrex::max(0.0, udi[0](i, j, k, URHOY_P) + dt * omega_Pr);,
 		    udi[1](i, j, k, URHOY_P) = amrex::max(0.0, udi[1](i, j, k, URHOY_P) + dt * omega_Pr);,
@@ -320,15 +324,15 @@ CNS::compute_dSdt_box_fct (const Box& bx,
 		// Update the udfab array for all species
 		udfab(i,j,k,UEDEN) = udfab(i,j,k,UEDEN) - dt*omegarho*lparm->q_dim;
 
-		// Update F
+		// Update Fuel
 		udfab(i, j, k, URHOY_F) = amrex::min(udfab(i, j, k, URHO), udfab(i, j, k, URHOY_F) + dt * omega_F);
 		udfab(i, j, k, URHOY_F) = amrex::max(0.0, udfab(i, j, k, URHOY_F));
 
-		// Update Oizer
+		// Update Oxidizer
 		udfab(i, j, k, URHOY_O) = amrex::min(udfab(i, j, k, URHO), udfab(i, j, k, URHOY_O) + dt * omega_Ox);
 		udfab(i, j, k, URHOY_O) = amrex::max(0.0, udfab(i, j, k, URHOY_O));
 
-		// Update Puct
+		// Update Product
 		udfab(i, j, k, URHOY_P) = amrex::min(udfab(i, j, k, URHO), udfab(i, j, k, URHOY_P) + dt * omega_Pr);
 		udfab(i, j, k, URHOY_P) = amrex::max(0.0, udfab(i, j, k, URHOY_P));
 
@@ -444,16 +448,34 @@ CNS::compute_dSdt_box_fct (const Box& bx,
         });
 
        amrex::ParallelFor(bxg3,
-        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            AMREX_D_TERM(
-            udi[0](i,j,k,URHOY) = amrex::max(0.0,amrex::min(udi[0](i,j,k,URHO),udi[0](i,j,k,URHOY)));,
-            udi[1](i,j,k,URHOY) = amrex::max(0.0,amrex::min(udi[1](i,j,k,URHO),udi[1](i,j,k,URHOY)));,
-            udi[2](i,j,k,URHOY) = amrex::max(0.0,amrex::min(udi[2](i,j,k,URHO),udi[2](i,j,k,URHOY)));
-            );
+	    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+	    {
+		// Fuel mass fraction bounds
+		AMREX_D_TERM(
+		udi[0](i,j,k,URHOY_F) = amrex::max(0.0,amrex::min(udi[0](i,j,k,URHO),udi[0](i,j,k,URHOY_F)));,
+		udi[1](i,j,k,URHOY_F) = amrex::max(0.0,amrex::min(udi[1](i,j,k,URHO),udi[1](i,j,k,URHOY_F)));,
+		udi[2](i,j,k,URHOY_F) = amrex::max(0.0,amrex::min(udi[2](i,j,k,URHO),udi[2](i,j,k,URHOY_F)));
+		);
+		
+		// Oxidizer mass fraction bounds
+		AMREX_D_TERM(
+		udi[0](i,j,k,URHOY_O) = amrex::max(0.0,amrex::min(udi[0](i,j,k,URHO),udi[0](i,j,k,URHOY_O)));,
+		udi[1](i,j,k,URHOY_O) = amrex::max(0.0,amrex::min(udi[1](i,j,k,URHO),udi[1](i,j,k,URHOY_O)));,
+		udi[2](i,j,k,URHOY_O) = amrex::max(0.0,amrex::min(udi[2](i,j,k,URHO),udi[2](i,j,k,URHOY_O)));
+		);
+		
+		// Product mass fraction bounds
+		AMREX_D_TERM(
+		udi[0](i,j,k,URHOY_P) = amrex::max(0.0,amrex::min(udi[0](i,j,k,URHO),udi[0](i,j,k,URHOY_P)));,
+		udi[1](i,j,k,URHOY_P) = amrex::max(0.0,amrex::min(udi[1](i,j,k,URHO),udi[1](i,j,k,URHOY_P)));,
+		udi[2](i,j,k,URHOY_P) = amrex::max(0.0,amrex::min(udi[2](i,j,k,URHO),udi[2](i,j,k,URHOY_P)));
+		);
 
-            udfab(i,j,k,URHOY)  = amrex::max(0.0,amrex::min(udfab(i,j,k,URHO),udfab(i,j,k,URHOY)));
-        });
+		// Apply bounds to unified solution array
+		udfab(i,j,k,URHOY_F) = amrex::max(0.0,amrex::min(udfab(i,j,k,URHO),udfab(i,j,k,URHOY_F)));
+		udfab(i,j,k,URHOY_O) = amrex::max(0.0,amrex::min(udfab(i,j,k,URHO),udfab(i,j,k,URHOY_O)));
+		udfab(i,j,k,URHOY_P) = amrex::max(0.0,amrex::min(udfab(i,j,k,URHO),udfab(i,j,k,URHOY_P)));
+	    });
 
         const Box& bxd = amrex::surroundingNodes(bx,0);
         amrex::ParallelFor(bxd, NEQNS,
@@ -592,15 +614,48 @@ CNS::compute_dSdt_box_fct (const Box& bx,
     });
 
     if(do_react == 1){
-        amrex::ParallelFor(bx,
-        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-        {
-            Real omegarho = -sofab(i,j,k,URHO) * lparm->pre_exp * sofab(i,j,k,URHOY) 
-                          * std::exp(-lparm->Ea_dim / (lparm->Ru * sofab(i,j,k,UTEMP)));
-            dsdtfab(i,j,k,UEDEN) = dsdtfab(i,j,k,UEDEN) - omegarho*lparm->q_dim;
-            dsdtfab(i,j,k,URHOY) = dsdtfab(i,j,k,URHOY) + omegarho;
-        });
-    }
+	    const ProbParm* prob_parm = d_prob_parm;
+	    
+	    amrex::ParallelFor(bx,
+		    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+		    {
+			// Get local mass fractions
+			Real yO = sofab(i, j, k, URHOY_O) / sofab(i, j, k, URHO);
+			Real yF = sofab(i, j, k, URHOY_F) / sofab(i, j, k, URHO);
+			Real yP = sofab(i, j, k, URHOY_P) / sofab(i, j, k, URHO);
+			
+			// Calculate phi and reaction progress variable
+			Real phi, Y_react;
+			phiAndYReact(yO, yF, yP, phi, Y_react, prob_parm);
+			
+			// Calculate reaction rate
+			Real omegarho = -sofab(i, j, k, URHO) * lparm->pre_exp * Y_react
+				      * std::exp(-lparm->Ea_dim / (lparm->Ru * sofab(i, j, k, UTEMP)));
+			
+			// Calculate species-specific reaction rates based on phi
+			Real omega_F, omega_O, omega_P;
+			Real s = prob_parm->OF_st; // Stoichiometric O/F ratio
+			
+			if (phi < 1.0) {
+			    // F-lean condition
+			    omega_F = (phi / (s + phi)) * omegarho;
+			    omega_O = (s * phi / (s + phi)) * omegarho;
+			    omega_P = -((s + 1) * phi / (s + phi)) * omegarho;
+			} 
+			else {
+			    // F-rich condition (including stoichiometric)
+			    omega_F = (1.0 / (s + phi)) * omegarho;
+			    omega_O = (s / (s + phi)) * omegarho;
+			    omega_P = -((s + 1.0) / (s + phi)) * omegarho;
+			}
+			
+			// Update the conserved variables with reaction source terms
+			dsdtfab(i, j, k, UEDEN) = dsdtfab(i, j, k, UEDEN) - omegarho * lparm->q_dim;
+			dsdtfab(i, j, k, URHOY_F) = dsdtfab(i, j, k, URHOY_F) + omega_F;
+			dsdtfab(i, j, k, URHOY_O) = dsdtfab(i, j, k, URHOY_O) + omega_O;
+			dsdtfab(i, j, k, URHOY_P) = dsdtfab(i, j, k, URHOY_P) + omega_P;
+		    });
+	}
 
     Gpu::synchronize();
     Gpu::streamSynchronize();

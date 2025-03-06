@@ -70,7 +70,7 @@ cns_initdata (int i, int j, int k, amrex::Array4<amrex::Real> const& state,
     
     Real phi = prob_parm.OF_st / (Y_ox/Y_f);
     
-    parm->Update_CDM_Parameters(phi);
+    Parm::Calculate_CDM_Parameters(phi, Parm::pre_exp_tmp, Parm::Ea_nd_tmp, Parm::q_nd_tmp, Parm::kappa_0_tmp);
     
     Real cs = std::sqrt(parm.eos_gamma * Pt / rhot);
     
@@ -82,7 +82,7 @@ cns_initdata (int i, int j, int k, amrex::Array4<amrex::Real> const& state,
     state(i,j,k,UMZ  ) = Real(0.0);
 #endif
     state(i,j,k,URHOY_F) = rhot * Y_f;
-    state(i,j,k,URHOY_O) = rhot * Y_o;
+    state(i,j,k,URHOY_O) = rhot * Y_ox;
     state(i,j,k,URHOY_P) = rhot * Y_p;
     
     Real et = Pt/(parm.eos_gamma-Real(1.0));
@@ -198,111 +198,80 @@ cns_tag_probspecific(int i, int j, int k, amrex::Array4<char> const& tag,
         Real z = prob_lo[2] + (k+Real(0.5))*dx[2];
 #endif
 
-        Real axY = 0.0, axT = 0.0, axP = 0.0;
-        Real ayY = 0.0, ayT = 0.0, ayP = 0.0;
+        Real axR = 0.0;
+        Real ayR = 0.0;
         if(flag(i,j,k).isConnected(1,0,0)){
-            axY = amrex::Math::abs( (sarr(i+1,j,k,URHOY)/sarr(i+1,j,k,URHO)) 
-                - (sarr(i,j,k,URHOY)/sarr(i,j,k,URHO)) );    
-            axT = amrex::Math::abs( sarr(i+1,j,k,UTEMP) - sarr(i,j,k,UTEMP) );
-            axP = (parm.eos_gamma-1.)*amrex::Math::abs( sarr(i+1,j,k,UEINT) - sarr(i,j,k,UEINT) );
+            axR = amrex::Math::abs( (sarr(i+1,j,k,URHO)) - (sarr(i,j,k,URHO)) );
         }
     
         if(flag(i,j,k).isConnected(0,1,0)){
-            ayY = amrex::Math::abs( (sarr(i,j+1,k,URHOY)/sarr(i,j+1,k,URHO)) 
-                - (sarr(i,j,k,URHOY)/sarr(i,j,k,URHO)) );
-            ayT = amrex::Math::abs( sarr(i,j+1,k,UTEMP) - sarr(i,j,k,UTEMP) );
-            ayP = (parm.eos_gamma-1.)*amrex::Math::abs( sarr(i,j+1,k,UEINT) - sarr(i,j,k,UEINT) );
+            ayR = amrex::Math::abs( (sarr(i,j+1,k,URHO)) - (sarr(i,j,k,URHO)) );
         }
     
         if(flag(i,j,k).isConnected(-1,0,0)){
-            axY = amrex::max(axY, 
-            amrex::Math::abs((sarr(i,j,k,URHOY)/sarr(i,j,k,URHO))-(sarr(i-1,j,k,URHOY)/sarr(i-1,j,k,URHO))));
-
-            axT = amrex::max(axT,amrex::Math::abs(sarr(i,j,k,UTEMP)-sarr(i-1,j,k,UTEMP)));
-
-            axP = amrex::max(axP,
-                (parm.eos_gamma-1.)*amrex::Math::abs(sarr(i,j,k,UEINT)-sarr(i-1,j,k,UEINT)));
+            axR = amrex::Math::abs( (sarr(i,j,k,URHO)) - (sarr(i-1,j,k,URHO)) );
         }
 
         if(flag(i,j,k).isConnected(0,-1,0)){
-            ayY = amrex::max(ayY, 
-            amrex::Math::abs((sarr(i,j,k,URHOY)/sarr(i,j,k,URHO))-(sarr(i,j-1,k,URHOY)/sarr(i,j-1,k,URHO))));
-
-            ayT = amrex::max(ayT, amrex::Math::abs(sarr(i,j,k,UTEMP)-sarr(i,j-1,k,UTEMP)));
-
-            ayP = amrex::max(ayP, (parm.eos_gamma-1.) 
-                * amrex::Math::abs(sarr(i,j,k,UEINT)-sarr(i,j-1,k,UEINT)));
+            ayR = amrex::Math::abs( (sarr(i,j,k,URHO)) - (sarr(i,j-1,k,URHO)) );
         }
 
-        Real gymag = std::sqrt(axY*axY + ayY*ayY);
-        Real gTmag = std::sqrt(axT*axT + ayT*ayT);
-        Real gPmag = std::sqrt(axP*axP + ayP*ayP);
-
-        Real minloc = prob_parm.flameloc - prob_parm.xreflo;
-        Real maxloc = prob_parm.flameloc + prob_parm.xrefhi;
+        Real gRmag = std::sqrt(axR*axR + ayR*ayR);
     
         if((!flag(i,j,k).isCovered())){
-            if(gymag >= prob_parm.deltaY 
-                || gTmag >= prob_parm.deltaT
-                || gPmag >= prob_parm.deltaP*PREATM
-                || (x >= minloc && x <= minloc && y >= prob_parm.yreflo && y <= prob_parm.yrefhi
-#if AMREX_SPACEDIM==3
-                && z >= prob_parm.zreflo && z <= prob_parm.zrefhi
-#endif
-                ) 
-                ){
+            if(gRmag >= prob_parm.deltaY){
                     tag(i,j,k) = tagval;
             } 
         }
     }
 }
 
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE
-amrex::Real
-get_flame_location (int i, int j, int k, 
-    amrex::GeometryData const& geomdata, 
-    amrex::Array4<amrex::Real const> const& state,
-    Parm const& parm) noexcept      
-{
-    using amrex::Real; 
+//AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+//amrex::Real
+//get_flame_location (int i, int j, int k, 
+//    amrex::GeometryData const& geomdata, 
+//    amrex::Array4<amrex::Real const> const& state,
+//    Parm const& parm) noexcept      
+//{
+//    using amrex::Real; 
 
-    Real flamelocate = geomdata.ProbLo(0);    
+//    Real flamelocate = geomdata.ProbLo(0);    
     // FLAME LOCATION IS THE LARGEST VALUE OF x FOR
     // WHICH REACTANT MASS FRACTION DROPS BELOW 0.5
-    if(state(i,j,k,URHOY) / state(i,j,k,URHO) < 0.5)
-       flamelocate = geomdata.ProbLo(0) + (i+0.5)*geomdata.CellSize(0);
+//    if(state(i,j,k,URHOY) / state(i,j,k,URHO) < 0.5)
+//       flamelocate = geomdata.ProbLo(0) + (i+0.5)*geomdata.CellSize(0);
 
-    return flamelocate;
-} 
+//   return flamelocate;
+//} 
 
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE
-amrex::Real
-get_shock_location (int i, int j, int k, 
-    amrex::GeometryData const& geomdata, 
-    amrex::Array4<Real const> const& state,
-    Parm const& parm) noexcept      
-{
-    Real shloc = geomdata.ProbLo(0);
+//AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+//amrex::Real
+//get_shock_location (int i, int j, int k, 
+//    amrex::GeometryData const& geomdata, 
+//    amrex::Array4<Real const> const& state,
+//    Parm const& parm) noexcept      
+//{
+//    Real shloc = geomdata.ProbLo(0);
     // SHOCK LOCATION IS THE LARGEST VALUE OF x FOR
     // WHICH PRESSURE IS GREATER THAN 1.5 atm
-    if((parm.eos_gamma-1.)*state(i,j,k,UEINT) > 1.5*PREATM)
-        shloc = geomdata.ProbLo(0) + (i+0.5)*geomdata.CellSize(0);
-    return shloc;
-} 
+//    if((parm.eos_gamma-1.)*state(i,j,k,UEINT) > 1.5*PREATM)
+//        shloc = geomdata.ProbLo(0) + (i+0.5)*geomdata.CellSize(0);
+//    return shloc;
+//} 
 
 
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE
-amrex::Real
-global_energy_release_rate (int i, int j, int k, 
-    amrex::GeometryData const& geomdata, 
-    amrex::Array4<Real const> const& state,
-    Parm const& parm) noexcept      
-{
-    Real omegarhoq = state(i,j,k,URHO) * parm.pre_exp * state(i,j,k,URHOY) 
-                          * std::exp(-parm.Ea_dim / (parm.Ru * state(i,j,k,UTEMP)))
-                          * parm.q_dim;
-    return omegarhoq;
-}
+//AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+//amrex::Real
+//global_energy_release_rate (int i, int j, int k, 
+//    amrex::GeometryData const& geomdata, 
+//    amrex::Array4<Real const> const& state,
+//    Parm const& parm) noexcept      
+//{
+//    Real omegarhoq = state(i,j,k,URHO) * parm.pre_exp * state(i,j,k,URHOY) 
+//                          * std::exp(-parm.Ea_dim / (parm.Ru * state(i,j,k,UTEMP)))
+//                          * parm.q_dim;
+//    return omegarhoq;
+//}
 
 
    
@@ -323,220 +292,7 @@ cns_probspecific_func (amrex::MultiFab& State,
                        amrex::Real time, amrex::Real dt
                        , int level)
 {
-    using amrex::Real;
 
-    const Real* prob_lo = geomdata.ProbLo();
-    const Real* prob_hi = geomdata.ProbHi();
-    const Real* dx      = geomdata.CellSize();
-
-    Real shloc = hprob_parm.shloc, flameloc = hprob_parm.flameloc, energy_grr = 0.0;
-
-    auto const& fact = dynamic_cast<EBFArrayBoxFactory const&>(State.Factory());
-    auto const& flags = fact.getMultiEBCellFlagFab();
-
-  // THIS SECTION DEALS WITH WRITING FLAME AND SHOCK LOCATION DATA FOR SPECIFIC ZONES IN THE Y
-  // DIRECTION
-  for(int ii = 0; ii < hprob_parm.nzones; ++ii){
-
-        Real ylo = hprob_parm.yloz[ii]; Real yhi = hprob_parm.yhiz[ii];
-
-        int myproc = ParallelDescriptor::MyProc();
-
-        Real shloc = hprob_parm.shl[ii], flameloc = hprob_parm.flamel[ii];
-
-        ReduceOps<ReduceOpMax> reduce_op_flame;
-        ReduceData<Real> reduce_data_flame(reduce_op_flame);
-        using ReduceTupleFlame = typename decltype(reduce_data_flame)::Type;
-
-        ReduceOps<ReduceOpMax> reduce_op_shock;
-        ReduceData<Real> reduce_data_shock(reduce_op_shock);
-        using ReduceTupleShock = typename decltype(reduce_data_shock)::Type;
-
-#ifdef AMREX_USE_OMP
-    #pragma omp parallel if (Gpu::notInLaunchRegion())
-#endif
-        for (MFIter mfi(State,false); mfi.isValid(); ++mfi)
-        {
-            const Box& bx = mfi.tilebox();
-            const auto& flag = flags[mfi];
-            auto const& s_arr = State.array(mfi);
-            if (flag.getType(bx) != FabType::covered)
-            {
-                // GET LOCATION OF REACTION FRONT
-               reduce_op_flame.eval(bx, reduce_data_flame, [=]
-               AMREX_GPU_DEVICE (int i, int j, int k) -> ReduceTupleFlame
-               {
-                    Real y = geomdata.ProbLo(1) + (j+Real(0.5))*geomdata.CellSize(1);
-                    if( y >= ylo && y <= yhi ){
-                        return get_flame_location(i,j,k,geomdata,s_arr,parm);
-                    }else{
-                        Real retval = geomdata.ProbLo(1);
-                        return retval;
-                    }   
-              });
-
-                // GET LOCATION OF SHOCK (SHOCK AND REACTION FRONT BECOME 
-                // COUPLED ONCE DDT OCCURS)
-              reduce_op_shock.eval(bx, reduce_data_shock, [=]
-              AMREX_GPU_DEVICE (int i, int j, int k) -> ReduceTupleShock
-              {
-                   Real y = geomdata.ProbLo(1) + (j+Real(0.5))*geomdata.CellSize(1);
-
-                    if( y >= ylo && y <= yhi ){
-                        return get_shock_location(i,j,k,geomdata,s_arr,parm);
-                    }else{
-                        Real retval = geomdata.ProbLo(1);
-                        return retval;
-                    }
-                });
-
-            }
-        } // mfi 
-        
-        ReduceTupleFlame host_tuple_flame = reduce_data_flame.value();
-        flameloc = amrex::get<0>(host_tuple_flame);
-
-        ReduceTupleShock host_tuple_shock = reduce_data_shock.value();
-        shloc = amrex::get<0>(host_tuple_shock);
-
-        ParallelDescriptor::ReduceRealMax(flameloc);
-        ParallelDescriptor::ReduceRealMax(shloc);
-        
-        if(myproc == 0){
-            hprob_parm.flamel[ii] = amrex::max(flameloc, hprob_parm.flamel[ii]); 
-            dprob_parm.flamel[ii] = amrex::max(flameloc, dprob_parm.flamel[ii]);
-            hprob_parm.shl[ii]    = amrex::max(shloc, hprob_parm.shl[ii]); 
-            dprob_parm.shl[ii]    = amrex::max(shloc, dprob_parm.shl[ii]);
-
-            if(hprob_parm.write_to_file_zones == 1 && write_data == 1){
-                std::ofstream ofs;
-                if(hprob_parm.append_file_zones == 0){
-                    
-                    if(ii == hprob_parm.nzones-1) hprob_parm.append_file_zones = 1;
-                    
-                    std::string filename = hprob_parm.data_file_zonebase;
-                    filename = filename + std::to_string(ii) + ".txt";
-                    ofs.open(filename, std::ofstream::out);
-                    if(!ofs)  amrex::Abort("Failed to create file to write zone flame and shock location..exiting!");
-                    Print(myproc,ofs) << "# yloz =  " << hprob_parm.yloz[ii] 
-                                  << ", yhiz = "  << hprob_parm.yhiz[ii] << "\n";
-                    Print(myproc,ofs) << "# time flameloc (cm) shockloc (cm) " << "\n";
-                }else{
-                    std::string filename = hprob_parm.data_file_zonebase;
-                    filename = filename + std::to_string(ii) + ".txt";
-                    ofs.open(filename, std::ofstream::app);
-                }
-
-                Print(myproc, ofs).SetPrecision(8) << std::left << std::setw(12) << time << "\t"
-                    << std::left << std::setw(12) << hprob_parm.flamel[ii]*100  << "\t"  
-                    << std::left << std::setw(12) << hprob_parm.shl[ii]*100 << "\n";
-
-                ofs.close();
-            }
-        }
-    }  // for(ii)
-
-    ParallelDescriptor::Barrier(); 
-
-    // shloc is a TEMPORARY COPY OF THE SHOCK LOCATION,
-    // flameloc is a TEMPORARY COPY OF THE REACTION FRONT LOCATION
-    // Reduce max operation
-    ReduceOps<ReduceOpMax> reduce_op_flame;
-    ReduceData<Real> reduce_data_flame(reduce_op_flame);
-    using ReduceTupleFlame = typename decltype(reduce_data_flame)::Type;
-
-    ReduceOps<ReduceOpMax> reduce_op_shock;
-    ReduceData<Real> reduce_data_shock(reduce_op_shock);
-    using ReduceTupleShock = typename decltype(reduce_data_shock)::Type;
-
-    // REDUCE SUM OPERATION TO COMPUTE THE GLOBAL ENERGY RELEASE RATE (rho * q * omega)
-    ReduceOps<ReduceOpSum> reduce_op_enrelease;
-    ReduceData<Real> reduce_data_enrelease(reduce_op_enrelease);
-    using ReduceTupleEnrelease = typename decltype(reduce_data_enrelease)::Type;
-
-#ifdef AMREX_USE_OMP
-#pragma omp parallel if (Gpu::notInLaunchRegion())
-#endif
-    for (MFIter mfi(State,false); mfi.isValid(); ++mfi)
-    {
-        const Box& bx = mfi.tilebox();
-        const auto& flag = flags[mfi];
-        auto const& s_arr = State.array(mfi);
-        if (flag.getType(bx) != FabType::covered)
-        {
-            // GET LOCATION OF REACTION FRONT
-          reduce_op_flame.eval(bx, reduce_data_flame, [=]
-             AMREX_GPU_DEVICE (int i, int j, int k) -> ReduceTupleFlame
-             {
-                 return get_flame_location(i,j,k,geomdata,s_arr,parm);
-             });
-
-          // GET LOCATION OF SHOCK (SHOCK AND REACTION FRONT BECOME 
-          // COUPLED ONCE DDT OCCURS)
-          reduce_op_shock.eval(bx, reduce_data_shock, [=]
-             AMREX_GPU_DEVICE (int i, int j, int k) -> ReduceTupleShock
-             {
-                 return get_shock_location(i,j,k,geomdata,s_arr,parm);
-             });
-
-          if(level == 0 && write_data == 1){
-            // GET THE GLOBAL ENERGY RELEASE RATE (COMPUTED ONLY ON LEVEL 0)
-            reduce_op_enrelease.eval(bx, reduce_data_enrelease, [=]
-             AMREX_GPU_DEVICE (int i, int j, int k) -> ReduceTupleEnrelease
-             {
-                 return global_energy_release_rate(i,j,k,geomdata,s_arr,parm);
-             });
-          }
-
-        }
-    } // mfi
-
-    ReduceTupleFlame host_tuple_flame = reduce_data_flame.value();
-    flameloc = amrex::get<0>(host_tuple_flame);
-
-    ReduceTupleShock host_tuple_shock = reduce_data_shock.value();
-    shloc = amrex::get<0>(host_tuple_shock);
-
-    ReduceTupleEnrelease host_tuple_grr = reduce_data_enrelease.value();
-    energy_grr = amrex::get<0>(host_tuple_grr);
-
-    ParallelDescriptor::ReduceRealMax(flameloc);
-    ParallelDescriptor::ReduceRealMax(shloc);
-
-    ParallelDescriptor::ReduceRealSum(energy_grr);
-
-    int myproc = ParallelDescriptor::MyProc();
-
-    if(myproc == 0){
-        hprob_parm.flameloc = amrex::max(flameloc, hprob_parm.flameloc); 
-        dprob_parm.flameloc = amrex::max(flameloc, dprob_parm.flameloc);
-        hprob_parm.shloc    = amrex::max(shloc, hprob_parm.shloc); 
-        dprob_parm.shloc    = amrex::max(shloc, dprob_parm.shloc);
-
-        if(hprob_parm.write_to_file == 1 && write_data == 1){
-            std::ofstream ofs;
-            if(hprob_parm.append_file == 0){
-                hprob_parm.append_file = 1;
-                ofs.open(hprob_parm.data_file, std::ofstream::out);
-                if(!ofs)  amrex::Abort("Failed to create file to write flame and shock location..exiting!");
-                Print(myproc,ofs) << "# time flameloc (cm) shockloc (cm) global_energy_release_rate" << "\n";
-            }else{
-                ofs.open(hprob_parm.data_file, std::ofstream::app);
-            }
-
-            Print(myproc, ofs).SetPrecision(8) << std::left << std::setw(12) << time << "\t"
-                << std::left << std::setw(12) << hprob_parm.flameloc*100  << "\t"  
-                << std::left << std::setw(12) << hprob_parm.shloc*100 << "\t"
-                << std::left << std::setw(12) << energy_grr << "\n";
-
-            ofs.close();
-
-            // hprob_parm.flameloc = 0.0; dprob_parm.flameloc = 0.0;
-            // hprob_parm.shloc = 0.0; dprob_parm.shloc = 0.0;
-        }
-    }
-
-    ParallelDescriptor::Barrier(); 
 }    
 
 AMREX_GPU_HOST

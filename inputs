@@ -1,0 +1,150 @@
+amrex.fpe_trap_invalid=0
+
+max_step  = 300
+stop_time = 4.0e-4
+
+geometry.is_periodic = 0 1 1
+geometry.coord_sys   = 0  # 0 => cart, 1 => RZ  2=>spherical
+geometry.prob_lo     =   0.0     0.0     0.0
+geometry.prob_hi     =   1.0   	 2.5e-4     1.0
+amr.n_cell           =   64000   16      64
+
+# >>>>>>>>>>>>>  BC FLAGS <<<<<<<<<<<<<<<<
+# 0 = Interior           3 = Symmetry
+# 1 = Inflow             4 = SlipWall
+# 2 = Outflow            5 = NoSlipWall
+# >>>>>>>>>>>>>  BC FLAGS <<<<<<<<<<<<<<<<
+cns.lo_bc       =  3   0   0
+cns.hi_bc       =  3   0   0
+
+cns.cfl = 0.15  # cfl number for hyperbolic system
+
+cns.v = 1
+amr.v = 1
+amr.subcycling_mode = Auto
+cns.do_reflux = 1
+
+# FCT parameters
+cns.minro 			= -1.0e-8
+cns.minp  			= 10132.5
+cns.maxro 			= 15.0
+cns.maxp 			= 9250000.0
+cns.diff1 			= 0.99
+cns.diffcc 			= 0.99
+cns.vfc_threshold 	= 1.e-3
+
+# SOOTFOIL START TIME
+cns.start_sfoil_time	 = 2.e-5
+
+# LOAD BALANCE
+amr.loadbalance_with_workestimates = 1
+amr.loadbalance_level0_int = 1000
+
+# REFINEMENT / REGRIDDING
+cns.tag_probspecific 		= 1 
+amr.max_level       		= 0    # maximum level number allowed
+cns.refine_max_dengrad_lev 	= 4
+amr.ref_ratio       		= 2 2 2 2 2 2 # refinement ratio
+amr.regrid_int      		= 4 # how often to regrid
+amr.blocking_factor 		= 16
+amr.max_grid_size  		 	= 32000
+amr.n_error_buf     		= 16 # number of buffer cells in error est
+amr.grid_eff        		= 0.99     # what constitutes an efficient grid
+
+# CHECKPOINT FILES
+amr.checkpoint_files_output = 1
+amr.check_file              = Output/chk   # root name of checkpoint file
+amr.check_int               = 100    # number of timesteps between checkpoints
+#amr.restart					= Output/chk00004000
+
+# PLOTFILES
+amr.plot_files_output = 1
+amr.file_name_digits  = 8
+amr.plot_file         = Output/plt     # root name of plotfile
+amr.plot_int          = 100     # number of timesteps between plotfiles
+amr.derive_plot_vars  = pressure x_velocity
+
+# EB
+eb2.geom_type = all_regular
+
+cns.refine_cutcells = 0
+
+# eb_algorithm : 1 for FCT, 2 for PLM
+cns.eb_algorithm = 1 
+cns.plm_iorder   = 2
+cns.eb_weights_type = 3
+
+cns.do_visc = false
+
+# problem specific parameter
+prob.p0  				= 101325.0
+prob.T0  				= 298.0
+prob.xd  				= 6.3e-4
+prob.deltaY 			= 0.5
+prob.deltaT 			= 2000
+prob.deltaP             = 1.5
+prob.overdrive_factor 	= 1.1
+prob.Mobj  				= 0.0
+
+prob.xreflo   				= 0.01
+prob.xrefhi   				= 0.00
+prob.yreflo   				= 0.00
+prob.yrefhi   				= 0.00
+
+#stoichiometric oxidizer to fuel ratio
+prob.OF_st = 34.32
+ 
+# Rich eqv. parameters
+prob.Y_fuel_rich     = 0.0285
+prob.Y_oxidizer_rich = 0.9715
+prob.Y_product_rich  = 0.0
+prob.rho_rich = 0.9312
+
+# Lean eqv. parameters
+prob.Y_fuel_lean     = 0.0214
+prob.Y_oxidizer_lean = 0.9786
+prob.Y_product_lean  = 0.0
+prob.rho_lean = 0.9312
+
+prob.Y1						= 1.0
+
+# REACTION PARAMETERS
+cns.do_react  			= false
+
+# Stoichiometric ethylene-air reaction parameters
+# equivalence ratio 							= 0.9971
+# experimental detonation cell size 			= 2.27 cm
+# laminar  flame thickness xft 					= 0.2981376 mm
+# half reaction distance xd 					= 1.2108 mm (xd / 20 = 6.054e-5 m)
+# Detonation CJ speed 							= 1835.4 m/s
+# Domain dimensions, base level computational cells = 
+# Computational cell size of base level dx_L0	= 7.8125e-4 m 	(256 cells, 0.2 m height)
+# Computational cell size of finest level dx_L4	= 4.8828125e-5 m (10240 cells, 8.0 m length, xd/24.79)
+# DEFINING THE REACTION PARAMETERS
+cns.eos_gamma 			= 1.125
+cns.eos_mu    			= 0.02277		# UNITS: kg/mo
+#cns.q_nd      			= 62.97	
+#cns.Ea_nd     			= 39.98
+#cns.pre_exp   			= 1.e12			# UNITS: cm^3 / (g-s)
+#cns.Tref      			= 298.0
+#cns.pref      			= 101325.0
+#cns.kappa_0				= 2e-5		# UNITS: g / (s-cm-K^(0.7))
+#prob.radhitemp			= 5.0e-2
+
+
+prob.write_to_file      = 1
+prob.append_file		= 1
+prob.data_file			= Data.txt
+
+# DETAILS FOR WRITING FLAME AND SHOCK LOCATION IN PARTICULAR ZONES
+prob.write_to_file_zones      = 0
+prob.append_file_zones        = 1
+prob.data_file_zonebase 	  = ethair_data_zone
+
+# prob.nzones 				  = 5
+# prob.yloz					  = 24.9e-3 44.9e-3 59.9e-3 69.98e-3 78.48e-3
+# prob.yhiz					  = 29.1e-3 47.1e-3 61.1e-3 70.52e-3 78.78e-3
+
+prob.nzones 				  = 2
+prob.yloz					  = 20.e-3 60.e-3 
+prob.yhiz					  = 24.e-3 68.e-3
